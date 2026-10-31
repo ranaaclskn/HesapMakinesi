@@ -1,0 +1,270 @@
+<!doctype html>
+<!--
+  Hesap makinesinin tarayıcıda görünen yüzü.
+  Bu dosyayı web_arayuz.py açar. Üç bölümden oluşur:
+    1. <style>  : renkler ve yerleşim (CSS)
+    2. <body>   : ekran ve düğmeler (HTML)
+    3. <script> : düğmelere basınca ne olacağı (JavaScript)
+  Asıl hesaplamayı JavaScript değil, Python yapar (bkz. hesapla fonksiyonu aşağıda).
+-->
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hesap Makinesi</title>
+  <style>
+    /* ---- RENKLER ----
+       Bütün renkleri burada değişken olarak tanımlıyoruz. Görünümü değiştirmek
+       için sadece buradaki değerleri değiştirmeniz yeterli. */
+    :root {
+      --arka-plan: #14151b;
+      --govde: #1e1f26;
+      --ekran-yazi: #ffffff;
+      --gecmis-yazi: #8b8fa3;
+      --rakam: #2c2e3a;
+      --ozel: #4b4e5e;
+      --islem: #ff9f43;
+      --esittir: #10ac84;
+    }
+
+    /* Sayfanın tamamı: hesap makinesini tam ortaya yerleştiriyoruz. */
+    body {
+      margin: 0;
+      min-height: 100vh;               /* ekranın tüm yüksekliği */
+      display: flex;
+      align-items: center;             /* dikeyde ortala */
+      justify-content: center;         /* yatayda ortala */
+      background: var(--arka-plan);
+      font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+
+    /* Hesap makinesinin kendisi: yuvarlak köşeli, gölgeli bir kutu. */
+    .hesap-makinesi {
+      width: 340px;
+      max-width: calc(100vw - 32px);   /* telefonda ekrandan taşmasın */
+      background: var(--govde);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Üstteki sonuç ekranı. Yazılar sağa yaslı, gerçek hesap makinesi gibi. */
+    .ekran { text-align: right; padding: 8px 8px 20px; }
+    .gecmis { color: var(--gecmis-yazi); font-size: 16px; min-height: 22px; }
+    .sonuc {
+      color: var(--ekran-yazi);
+      font-size: 44px;
+      font-weight: 600;
+      overflow-wrap: anywhere;         /* çok uzun sayılar alt satıra geçsin */
+    }
+
+    /* Düğmeler 4 sütunlu bir ızgarada (grid) diziliyor. */
+    .dugmeler {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);  /* 4 eşit sütun */
+      gap: 12px;                               /* düğmeler arası boşluk */
+    }
+
+    button {
+      height: 64px;
+      border: none;
+      border-radius: 16px;
+      font-size: 24px;
+      color: #fff;
+      cursor: pointer;
+      background: var(--rakam);
+      transition: filter 0.1s, transform 0.05s;  /* yumuşak geçiş efekti */
+    }
+    button:hover  { filter: brightness(1.2); }   /* fare üzerine gelince aydınlan */
+    button:active { transform: scale(0.95); }    /* basılınca hafifçe küçül */
+
+    /* Düğme türlerine göre renkler */
+    .ozel    { background: var(--ozel); }
+    .islem   { background: var(--islem); }
+    .esittir { background: var(--esittir); }
+    .genis   { grid-column: span 2; }             /* "0" düğmesi iki sütun kaplasın */
+  </style>
+</head>
+<body>
+  <div class="hesap-makinesi">
+    <div class="ekran">
+      <div class="gecmis" id="gecmis"></div>
+      <div class="sonuc" id="sonuc">0</div>
+    </div>
+
+    <!-- Her düğmenin data-tus özelliği, ona basılınca ne yapılacağını söyler. -->
+    <div class="dugmeler">
+      <button class="ozel" data-tus="C">C</button>
+      <button class="ozel" data-tus="sil">⌫</button>
+      <button class="ozel" data-tus="%">%</button>
+      <button class="islem" data-tus="/">÷</button>
+
+      <button data-tus="7">7</button>
+      <button data-tus="8">8</button>
+      <button data-tus="9">9</button>
+      <button class="islem" data-tus="*">×</button>
+
+      <button data-tus="4">4</button>
+      <button data-tus="5">5</button>
+      <button data-tus="6">6</button>
+      <button class="islem" data-tus="-">−</button>
+
+      <button data-tus="1">1</button>
+      <button data-tus="2">2</button>
+      <button data-tus="3">3</button>
+      <button class="islem" data-tus="+">+</button>
+
+      <button class="genis" data-tus="0">0</button>
+      <button data-tus=",">,</button>
+      <button class="esittir" data-tus="=">=</button>
+    </div>
+  </div>
+
+  <script>
+    // ---- HESAP MAKİNESİNİN HAFIZASI ----
+    // mevcut:    ekrandaki sayı (metin olarak; rakamlar tek tek ekleniyor)
+    // ilkSayi:   işlem tuşundan önce girilen sayı
+    // islem:     seçilen işlem ("+", "-", "*", "/") ya da null (henüz yok)
+    // yeniSayi:  true ise bir sonraki rakam yeni bir sayı başlatır
+    let mevcut = "0";
+    let ilkSayi = null;
+    let islem = null;
+    let yeniSayi = false;
+
+    // Ekrandaki yazı alanlarını bir kere bulup değişkenlerde saklıyoruz.
+    const sonucAlani = document.getElementById("sonuc");
+    const gecmisAlani = document.getElementById("gecmis");
+
+    // İçeride Python'un anladığı işaretleri (* /) kullanıyoruz,
+    // ekranda ise güzel simgeleri (× ÷) gösteriyoruz.
+    const SIMGELER = { "+": "+", "-": "−", "*": "×", "/": "÷" };
+
+    // Program içinde ondalık ayırıcı nokta ("2.5"), ekranda virgül ("2,5").
+    const goster = (metin) => metin.replace(".", ",");
+
+    // Sayıyı ekrana uygun metne çevirir: 8.0 -> "8", 0.30000000000000004 -> "0.3"
+    const sayiyiMetneCevir = (sayi) => String(parseFloat(sayi.toPrecision(12)));
+
+    function ekraniGuncelle() {
+      sonucAlani.textContent = goster(mevcut);
+    }
+
+    // ---- PYTHON İLE KONUŞAN KISIM ----
+    // fetch: sayfadan web_arayuz.py programına istek gönderir.
+    // encodeURIComponent "+" gibi özel karakterlerin adreste bozulmamasını sağlar.
+    // async/await: cevap gelene kadar beklememizi sağlar (cevap anında gelmeyebilir).
+    async function hesapla(a, isaret, b) {
+      const adres = `/hesapla?a=${a}&islem=${encodeURIComponent(isaret)}&b=${b}`;
+      const cevap = await fetch(adres);
+      return cevap.json();   // ör. {"sonuc": 8} ya da {"hata": "Sıfıra bölünemez"}
+    }
+
+    // ---- DÜĞMELERİN YAPTIĞI İŞLER ----
+
+    function rakamEkle(rakam) {
+      if (yeniSayi || mevcut === "0" || mevcut === "Hata") {
+        mevcut = rakam;              // eski sayıyı sil, yeniye başla
+        yeniSayi = false;
+      } else if (mevcut.length < 15) {
+        mevcut += rakam;             // rakamı sona ekle
+      }
+    }
+
+    function virgulEkle() {
+      if (yeniSayi || mevcut === "Hata") {
+        mevcut = "0.";
+        yeniSayi = false;
+      } else if (!mevcut.includes(".")) {   // bir sayıda iki virgül olamaz
+        mevcut += ".";
+      }
+    }
+
+    async function esittir() {
+      if (islem === null) return;           // işlem seçilmediyse yapılacak bir şey yok
+
+      const ikinciSayi = mevcut;
+      gecmisAlani.textContent =
+        `${goster(sayiyiMetneCevir(ilkSayi))} ${SIMGELER[islem]} ${goster(ikinciSayi)} =`;
+
+      const veri = await hesapla(ilkSayi, islem, ikinciSayi);   // Python'a sor
+      if ("hata" in veri) {
+        mevcut = "Hata";
+        gecmisAlani.textContent = veri.hata;
+      } else {
+        mevcut = sayiyiMetneCevir(veri.sonuc);
+      }
+      ilkSayi = null;
+      islem = null;
+      yeniSayi = true;
+    }
+
+    async function islemSec(isaret) {
+      if (mevcut === "Hata") return;
+      // Zincirleme işlem (2 + 3 + ...): ikinci sayı girildiyse önce onu hesapla.
+      if (islem !== null && !yeniSayi) {
+        await esittir();
+        if (mevcut === "Hata") return;
+      }
+      ilkSayi = parseFloat(mevcut);
+      islem = isaret;
+      yeniSayi = true;
+      gecmisAlani.textContent = `${goster(mevcut)} ${SIMGELER[isaret]}`;
+    }
+
+    function temizle() {
+      mevcut = "0";
+      ilkSayi = null;
+      islem = null;
+      yeniSayi = false;
+      gecmisAlani.textContent = "";
+    }
+
+    function sonRakamiSil() {
+      if (yeniSayi || mevcut === "Hata") return;
+      mevcut = mevcut.slice(0, -1);         // son karakteri at
+      if (mevcut === "" || mevcut === "-") mevcut = "0";
+    }
+
+    function yuzde() {
+      if (mevcut === "Hata") return;
+      mevcut = sayiyiMetneCevir(parseFloat(mevcut) / 100);
+      yeniSayi = true;
+    }
+
+    // Hangi tuşa basıldığına bakıp ilgili fonksiyonu çağıran "santral".
+    async function tusaBasildi(tus) {
+      if (/^[0-9]$/.test(tus)) rakamEkle(tus);       // 0-9 arası bir rakam mı?
+      else if (tus === ",") virgulEkle();
+      else if (tus in SIMGELER) await islemSec(tus);
+      else if (tus === "=") await esittir();
+      else if (tus === "C") temizle();
+      else if (tus === "sil") sonRakamiSil();
+      else if (tus === "%") yuzde();
+      ekraniGuncelle();
+    }
+
+    // ---- FARE VE KLAVYEYİ BAĞLAMA ----
+
+    // Sayfadaki her düğmeye "tıklanınca tusaBasildi'yi çağır" diyoruz.
+    document.querySelectorAll("button").forEach((dugme) => {
+      dugme.addEventListener("click", () => {
+        tusaBasildi(dugme.dataset.tus);
+        dugme.blur();   // Enter'a basınca son tıklanan düğme tekrar basılmasın
+      });
+    });
+
+    // Klavye tuşlarını düğmelere eşliyoruz.
+    const KLAVYE = {
+      "Enter": "=", "=": "=", "Backspace": "sil", "Escape": "C", "Delete": "C",
+      ".": ",", ",": ",", "%": "%", "+": "+", "-": "-", "*": "*", "/": "/",
+    };
+    document.addEventListener("keydown", (olay) => {
+      const tus = /^[0-9]$/.test(olay.key) ? olay.key : KLAVYE[olay.key];
+      if (tus) {
+        olay.preventDefault();   // tarayıcının "/" ile arama açması gibi şeyleri engelle
+        tusaBasildi(tus);
+      }
+    });
+  </script>
+</body>
+</html>
